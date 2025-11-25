@@ -184,7 +184,7 @@ function addMessage(type, text) {
 function showError(msg) {
   // Overwrite main content for critical errors
   document.querySelector("main").innerHTML =
-    `<div style="padding:20px; color:red; text-align:center;">${msg}</div>`;
+    `<div class="error view">${msg}</div>`;
 }
 
 // --- Event Listeners ---
