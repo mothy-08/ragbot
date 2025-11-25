@@ -21,26 +21,62 @@ let currentUrl = "";
 
 // --- Initialization ---
 
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    const tab = await getCurrentTab();
-    currentUrl = tab.url;
+// Side Panels stay open, so we need to listen for tab changes
+document.addEventListener("DOMContentLoaded", () => {
+  updateContext(); // Run once on load
+});
 
-    // Update Badge with Domain
-    const urlObj = new URL(currentUrl);
-    els.domainBadge.textContent = urlObj.hostname;
+// Listen for when user switches tabs
+chrome.tabs.onActivated.addListener(() => {
+  updateContext();
+});
 
-    // Check Backend
-    await checkIndexStatus(currentUrl);
-  } catch (err) {
-    showError("Error: " + err.message);
+// Listen for when user navigates within a tab
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" && tab.active) {
+    updateContext();
   }
 });
 
 // --- Core Logic ---
 
+async function updateContext() {
+  try {
+    const tab = await getCurrentTab();
+
+    // 1. Safety Check: If no URL or not a web page, stop here
+    if (!tab.url || !tab.url.startsWith("http")) {
+      currentUrl = "";
+      els.domainBadge.textContent = "Restricted";
+      showView("loading"); // Or a specific "error" view
+      document.querySelector("#loading-view p").textContent =
+        "Please open a valid website.";
+      return;
+    }
+
+    // 2. Only reload if URL actually changed
+    if (tab.url === currentUrl) return;
+
+    currentUrl = tab.url;
+
+    // 3. Update Badge
+    const urlObj = new URL(currentUrl);
+    els.domainBadge.textContent = urlObj.hostname;
+
+    // 4. Reset UI & Check Backend
+    els.messages.innerHTML =
+      '<div class="msg bot">Hello! Ask me anything about this page.</div>';
+    await checkIndexStatus(currentUrl);
+  } catch (err) {
+    console.error(err);
+    els.domainBadge.textContent = "Error";
+  }
+}
+
 async function checkIndexStatus(url) {
   showView("loading");
+  document.querySelector("#loading-view p").textContent =
+    "Connecting to Brain...";
 
   try {
     const res = await fetch(`${API_BASE}/check`, {
@@ -72,15 +108,14 @@ async function startTraining() {
       body: JSON.stringify({ url: currentUrl }),
     });
 
-    const data = await res.json();
+    await res.json();
 
-    // Since ingestion is background, we wait a bit then switch to chat
-    // In a real app, we would poll status. Here we fake a 2s delay.
+    // Fake delay for UX
     setTimeout(() => {
       showView("chat");
       addMessage(
         "bot",
-        "I've started reading this site! You can ask me questions now. (Note: It might take a minute to finish reading everything).",
+        "I've started reading this site! You can ask me questions now.",
       );
     }, 2000);
   } catch (err) {
@@ -94,7 +129,6 @@ async function sendMessage() {
   const text = els.input.value.trim();
   if (!text) return;
 
-  // UI Updates
   addMessage("user", text);
   els.input.value = "";
   els.input.disabled = true;
@@ -126,10 +160,10 @@ async function sendMessage() {
 // --- Utilities ---
 
 function getCurrentTab() {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) resolve(tabs[0]);
-      else reject(new Error("No active tab"));
+  return new Promise((resolve) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      if (tabs && tabs[0]) resolve(tabs[0]);
+      else resolve({}); // Return empty object instead of crashing
     });
   });
 }
@@ -142,21 +176,21 @@ function showView(name) {
 function addMessage(type, text) {
   const div = document.createElement("div");
   div.className = `msg ${type}`;
-  div.innerText = text; // Safe text insertion
+  div.innerText = text;
   els.messages.appendChild(div);
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
 function showError(msg) {
-  document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">${msg}</div>`;
+  // Overwrite main content for critical errors
+  document.querySelector("main").innerHTML =
+    `<div style="padding:20px; color:red; text-align:center;">${msg}</div>`;
 }
 
 // --- Event Listeners ---
 
 els.trainBtn.addEventListener("click", startTraining);
-
 els.sendBtn.addEventListener("click", sendMessage);
-
 els.input.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendMessage();
 });
