@@ -1,10 +1,10 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from utils import get_namespace_id, logger
-from crawler import crawl_website
-from schemas import ChatRequest, IngestRequest
-from config import vs, flash
+from api.utils import get_namespace_id, logger
+from api.crawler import crawl_website
+from api.schemas import ChatRequest, IngestRequest
+from api.config import vs, flash
 
 app = FastAPI(title="RAG Chatbot API", version="1.0")
 

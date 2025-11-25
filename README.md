@@ -1,4 +1,4 @@
-# 🌐 RAGBot 
+# 🤖 RAGBot
 
 A cloud-native, multi-tenant AI chatbot that instantly learns the content of any website and answers questions in real-time. Built for the Cloud Computing final project.
 
@@ -26,14 +26,17 @@ A cloud-native, multi-tenant AI chatbot that instantly learns the content of any
 ## 📂 Project Structure
 
 ```bash
-├── server.py           # Main FastAPI entry point
-├── crawler.py          # Logic for sitemap parsing & scraping
-├── vectorstore.py      # Pinecone batching & management
-├── config.py           # Environment & Logging setup
-├── utils.py            # Security & URL validation
-├── schemas.py          # Pydantic data models
-├── extension/          # Chrome Extension Source Code
+ragbot/
+├── api/                    # 🐍 Backend Logic
+│   ├── server.py           # Main FastAPI entry point
+│   ├── crawler.py          # Logic for sitemap parsing & scraping
+│   ├── vectorstore.py      # Pinecone batching & management
+│   ├── config.py           # Environment & Logging setup
+│   ├── utils.py            # Security & URL validation
+│   ├── schemas.py          # Pydantic data models
+│   └── requirements.txt    # Python Dependencies
+├── extension/              # 🧩 Frontend Client
 │   ├── manifest.json
 │   ├── popup.html
 │   └── popup.js
-└── requirements.txt    # Python Dependencies
+└── README.md               # Documentation

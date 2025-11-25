@@ -2,7 +2,7 @@ from typing import Any
 import uuid
 from pinecone import Pinecone, ServerlessSpec
 from sentence_transformers import SentenceTransformer
-from utils import logger
+from api.utils import logger
 
 
 class VectorStoreManager:

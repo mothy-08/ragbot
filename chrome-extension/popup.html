@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG Bot</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>RAG Bot</h1>
+      <span id="domain-badge" class="badge">Checking...</span>
+    </header>
+
+    <main>
+      <div id="loading-view" class="view">
+        <div class="loader"></div>
+        <p>Connecting to Brain...</p>
+      </div>
+
+      <!-- Train View -->
+      <div id="train-view" class="view hidden">
+        <div class="icon-large">🧠</div>
+        <h2>New Knowledge</h2>
+        <p>
+          I haven't read this website yet.<br />Train me to answer questions
+          about it.
+        </p>
+        <button id="train-btn">Train on this Page</button>
+        <p id="train-status" class="hidden">
+          <span class="loader"></span>
+          Processing...
+        </p>
+      </div>
+
+      <!-- Chat View -->
+      <div id="chat-view" class="view hidden">
+        <div id="messages">
+          <div class="msg bot">Hello! Ask me anything about this page.</div>
+        </div>
+        <div class="input-area">
+          <input
+            type="text"
+            id="user-input"
+            placeholder="Ask a question..."
+            autocomplete="off"
+          />
+          <button id="send-btn" class="send-btn">↑</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- The Logic -->
+  </body>
+</html>

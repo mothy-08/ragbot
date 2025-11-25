@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 from dotenv import load_dotenv
-from vectorstore import VectorStoreManager
+from api.vectorstore import VectorStoreManager
 import google.generativeai as genai
 
 logging.basicConfig(
@@ -38,6 +38,7 @@ try:
     genai.configure(api_key=GOOGLE_API_KEY)  # type: ignore
     flash = genai.GenerativeModel("gemini-2.0-flash")  # type: ignore
 
+    logger.info("✅ System initialized: Pinecone & Gemini ready.")
 except Exception as e:
     logger.critical(f"Startup Failure: {e}")
     sys.exit(1)

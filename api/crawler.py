@@ -1,7 +1,7 @@
 import time
 import trafilatura
 from trafilatura.sitemaps import sitemap_search
-from utils import logger, is_valid_url
+from api.utils import logger, is_valid_url
 
 
 def smart_chunk(text: str, chunk_size=500) -> list[str]:
