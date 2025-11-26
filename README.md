@@ -1,3 +1,13 @@
+---
+title: RAGBot
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+license: mit
+---
+
 # 🤖 RAGBOT
 
 A cloud-native, multi-tenant AI chatbot that instantly learns the content of
@@ -41,22 +51,22 @@ Built for the Cloud Computing final project.
 ragbot/
 ├── README.md           # Documentation
 ├── api/                # 🐍 Backend Logic
-│   ├── config.py       # Environment & Logging setup
-│   ├── crawler.py      # Logic for sitemap parsing & scraping
-│   ├── schemas.py      # Pydantic data models
-│   ├── server.py       # Main FastAPI entry point
-│   ├── utils.py        # Security & URL validation
-│   └── vectorstore.py  # Pinecone batching & management
+│   ├── config.py       # Environment & Logging setup
+│   ├── crawler.py      # Logic for sitemap parsing & scraping
+│   ├── schemas.py      # Pydantic data models
+│   ├── server.py       # Main FastAPI entry point
+│   ├── utils.py        # Security & URL validation
+│   └── vectorstore.py  # Pinecone batching & management
 ├── chrome-extension/   # 🧩 Frontend Client
-│   ├── background.js   # On-click sidepanel logic
-│   ├── icons/          # Chrome Extension icons
-│   │   ├── icon128.png
-│   │   ├── icon16.png
-│   │   ├── icon32.png
-│   │   └── icon48.png
-│   ├── manifest.json   # Setup for Chrome Extension
-│   ├── sidepanel.css   # UI
-│   ├── sidepanel.html  # HTML Contents
-│   └── sidepanel.js    # Main UI logic
+│   ├── background.js   # On-click sidepanel logic
+│   ├── icons/          # Chrome Extension icons
+│   │   ├── icon128.png
+│   │   ├── icon16.png
+│   │   ├── icon32.png
+│   │   └── icon48.png
+│   ├── manifest.json   # Setup for Chrome Extension
+│   ├── sidepanel.css   # UI
+│   ├── sidepanel.html  # HTML Contents
+│   └── sidepanel.js    # Main UI logic
 └── requirements.txt    # Python dependencies
 ```
