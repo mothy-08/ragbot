@@ -1,18 +1,22 @@
 FROM python:3.10-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 RUN useradd -m -u 1000 user
 
 WORKDIR /app
 
 COPY --chown=user ./requirements.txt requirements.txt
-
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+    pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=user ./api ./api
+RUN pip install --no-cache-dir \
+    torch \
+    sentence-transformers \
+    --index-url https://download.pytorch.org/whl/cpu
+
+COPY --chown=user . .
 
 USER user
 
