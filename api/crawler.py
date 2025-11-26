@@ -5,16 +5,35 @@ import trafilatura
 from trafilatura.sitemaps import sitemap_search
 from api.utils import logger, is_valid_url
 
+# 1. PRIORITY KEYWORDS
+# Pages containing these words get crawled FIRST.
+PRIORITY_KEYWORDS = [
+    "about",
+    "mission",
+    "vision",
+    "history",
+    "values",
+    "team",
+    "leadership",
+    "board",
+    "administration",
+    "structure",
+    "contact",
+    "locations",
+    "overview",
+    "who-we-are",
+    "careers",
+    "office-of-the-president",
+    "executive",
+]
+
 
 def smart_chunk(text: str, chunk_size=1000, overlap=100) -> list[str]:
     if not text:
         return []
-
     chunks = []
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-
     current_chunk = ""
-
     for para in paragraphs:
         if len(current_chunk) + len(para) > chunk_size:
             if current_chunk:
@@ -25,11 +44,23 @@ def smart_chunk(text: str, chunk_size=1000, overlap=100) -> list[str]:
                 current_chunk = ""
         else:
             current_chunk += para + "\n"
-
     if current_chunk:
         chunks.append(current_chunk.strip())
-
     return chunks
+
+
+def get_url_priority(url: str) -> float:
+    """Higher score = Crawled sooner"""
+    score = 0
+    url_lower = url.lower()
+
+    for keyword in PRIORITY_KEYWORDS:
+        if keyword in url_lower:
+            score += 10
+
+    # Prefer shorter URLs (e.g., /about is better than /news/2023/10/12/title)
+    score -= len(url) * 0.05
+    return score
 
 
 def crawl_website(base_url: str, limit: int = 25):
@@ -47,11 +78,14 @@ def crawl_website(base_url: str, limit: int = 25):
         urls = []
 
     if not urls:
-        logger.warning("No sitemap found (or blocked). Fallback to base URL.")
         urls = [base_url]
 
     valid_urls = [u for u in urls if is_valid_url(u, base_url)]
-    logger.info(f"Found {len(urls)} URLs, {len(valid_urls)} valid.")
+
+    # SORT BY IMPORTANCE
+    valid_urls.sort(key=get_url_priority, reverse=True)
+
+    logger.info(f"Found {len(urls)} URLs. Top priority: {valid_urls[:3]}")
 
     count = 0
     for link in valid_urls:
@@ -63,14 +97,12 @@ def crawl_website(base_url: str, limit: int = 25):
             response = requests.get(link, headers=headers, timeout=10)
 
             if response.status_code != 200:
-                logger.warning(f"Blocked or missing ({response.status_code}): {link}")
                 continue
 
-            # --- ROBUST EXTRACTION STRATEGY ---
+            # Robust Extraction
             page_title = "Unknown Page"
             raw_text = ""
 
-            # Attempt 1: Bare Extraction (Best Quality)
             try:
                 result = trafilatura.bare_extraction(
                     response.text, include_comments=False
@@ -79,17 +111,11 @@ def crawl_website(base_url: str, limit: int = 25):
                     page_title = result.get("title", "Unknown Page")
                     raw_text = result["text"]
             except Exception:
-                # If trafilatura crashes (AttributeError, etc.), fail silently and try fallback
-                logger.warning(
-                    f"Metadata extraction failed for {link}, using fallback."
-                )
                 pass
 
-            # Attempt 2: Fallback Extraction (If Attempt 1 failed)
             if not raw_text:
+                # Fallback manual extraction
                 raw_text = trafilatura.extract(response.text, include_comments=False)
-
-                # Manual Title Extraction via Regex (since bare_extraction failed)
                 if raw_text:
                     title_match = re.search(
                         r"<title>(.*?)</title>",
@@ -104,11 +130,10 @@ def crawl_website(base_url: str, limit: int = 25):
             if not raw_text:
                 continue
 
-            # Chunking and Context Injection
             text_chunks = smart_chunk(raw_text)
 
             contextualized_chunks = [
-                f"Source: {page_title}\n\n{chunk}" for chunk in text_chunks
+                f"Source: {page_title}\nURL: {link}\n\n{chunk}" for chunk in text_chunks
             ]
 
             yield link, contextualized_chunks

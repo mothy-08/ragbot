@@ -19,29 +19,18 @@ const els = {
 
 // State
 let currentUrl = "";
+let isTraining = false;
 
-// --- Initialization ---
-
-document.addEventListener("DOMContentLoaded", () => {
-  updateContext();
-});
-
-chrome.tabs.onActivated.addListener(() => {
-  updateContext();
-});
-
+document.addEventListener("DOMContentLoaded", () => updateContext());
+chrome.tabs.onActivated.addListener(() => updateContext());
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" && tab.active) {
-    updateContext();
-  }
+  if (changeInfo.status === "complete" && tab.active) updateContext();
 });
-
-// --- Core Logic ---
 
 async function updateContext() {
+  if (isTraining) return;
   try {
     const tab = await getCurrentTab();
-
     if (!tab.url || !tab.url.startsWith("http")) {
       currentUrl = "";
       els.domainBadge.textContent = "Restricted";
@@ -50,17 +39,13 @@ async function updateContext() {
         "Please open a valid website.";
       return;
     }
-
     if (tab.url === currentUrl) return;
 
     currentUrl = tab.url;
     const urlObj = new URL(currentUrl);
     els.domainBadge.textContent = urlObj.hostname;
 
-    // 1. Load History
     await loadChatHistory(currentUrl);
-
-    // 2. Check Status
     await checkIndexStatus(currentUrl);
   } catch (err) {
     console.error(err);
@@ -69,17 +54,12 @@ async function updateContext() {
 }
 
 async function checkIndexStatus(url) {
-  // CRITICAL FIX:
-  // If we already have a conversation history, TRUST IT.
-  // Don't show loading screens or re-check the backend.
-  // This prevents the "Stuck on Loading" bug when switching tabs.
   const hasHistory = els.messages.childElementCount > 1;
   if (hasHistory) {
     showView("chat");
     return;
   }
 
-  // Only show "Connecting..." if we are starting fresh
   showView("loading");
   document.querySelector("#loading-view p").textContent =
     "Connecting to Brain...";
@@ -90,29 +70,24 @@ async function checkIndexStatus(url) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: url }),
     });
-
     const data = await res.json();
 
-    if (data.exists) {
-      showView("chat");
-    } else {
-      showView("train");
-    }
+    if (data.exists) showView("chat");
+    else showView("train");
   } catch (err) {
     showError("Backend Offline. Is the Space running?");
   }
 }
 
 async function startTraining() {
-  els.trainBtn.disabled = true;
+  isTraining = true;
+  els.trainBtn.classList.add("hidden");
   els.trainStatus.classList.remove("hidden");
 
-  // Update text to show we are working
   const statusText = els.trainStatus.querySelector("span").nextSibling;
   if (statusText) statusText.textContent = " Reading website...";
 
   try {
-    // 1. Trigger Ingest
     const res = await fetch(`${API_BASE}/ingest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -121,33 +96,29 @@ async function startTraining() {
 
     if (!res.ok) throw new Error("Ingest failed");
 
-    // 2. POLL until ready (The "Wait" Logic)
-    if (statusText) statusText.textContent = " Building brain...";
+    if (statusText)
+      statusText.textContent = " Building brain (this may take a few mins)...";
 
+    // INCREASED TIMEOUT: 5 Minutes
     const isReady = await pollForIndex(currentUrl);
 
-    if (!isReady) {
-      throw new Error("Training timed out. Try again.");
-    }
+    if (!isReady)
+      throw new Error("Training timed out. Try refreshing the page.");
 
-    // 3. Success! Wipe old history and start fresh
     await clearHistory(false);
-
     showView("chat");
     addMessage("bot", "I've finished reading! You can ask me questions now.");
   } catch (err) {
     alert("Training failed: " + err.message);
-  } finally {
-    // Reset UI state
-    els.trainBtn.disabled = false;
+    els.trainBtn.classList.remove("hidden");
     els.trainStatus.classList.add("hidden");
-    if (statusText) statusText.textContent = " Processing...";
+  } finally {
+    isTraining = false;
   }
 }
 
-// Helper: Polls the backend every 2s to see if index is ready
 async function pollForIndex(url) {
-  const maxAttempts = 30; // Wait up to 60 seconds
+  const maxAttempts = 100; // 100 * 3s = 300s (5 mins)
   let attempts = 0;
 
   while (attempts < maxAttempts) {
@@ -158,47 +129,37 @@ async function pollForIndex(url) {
         body: JSON.stringify({ url: url }),
       });
       const data = await res.json();
-
-      if (data.exists && data.vector_count > 0) {
-        return true; // Success!
-      }
+      if (data.exists && data.vector_count > 0) return true;
     } catch (e) {
-      console.log("Polling error, retrying...");
+      console.log("Polling error...");
     }
 
-    // Wait 2 seconds
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     attempts++;
   }
   return false;
 }
 
+// ... (Keep sendMessage, loadChatHistory, saveMessageToStorage, clearHistory, getCurrentTab, showView, addMessage, addLoadingBubble, scrollToBottom, showError, Event Listeners exactly as they were) ...
+// For brevity, I am not repeating the helper functions here, but make sure you keep them!
+
+// --- Utilities (Shortened for copy-paste context) ---
 async function sendMessage() {
   const text = els.input.value.trim();
   if (!text) return;
-
   addMessage("user", text);
-
   els.input.value = "";
   els.input.disabled = true;
   els.sendBtn.disabled = true;
-
   const loadingBubble = addLoadingBubble();
-
   try {
     const res = await fetch(`${API_BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        url: currentUrl,
-      }),
+      body: JSON.stringify({ message: text, url: currentUrl }),
     });
-
     if (!res.ok) throw new Error("API Error");
-
     const data = await res.json();
-
     loadingBubble.remove();
     addMessage("bot", data.answer);
   } catch (err) {
@@ -211,60 +172,46 @@ async function sendMessage() {
   }
 }
 
-// --- Storage & History Logic ---
-
 async function loadChatHistory(url) {
-  els.messages.innerHTML = ""; // Clear current view
-
+  els.messages.innerHTML = "";
   const key = `chat_${url}`;
   const result = await chrome.storage.local.get(key);
   const history = result[key] || [];
-
   if (history.length === 0) {
     const text = "Hello! Ask me anything about this page.";
-    const div = document.createElement("div");
-    div.className = "msg bot";
-    div.innerText = text;
-    els.messages.appendChild(div);
+    addMessageUI("bot", text);
     saveMessageToStorage(url, "bot", text);
   } else {
-    history.forEach((msg) => {
-      const div = document.createElement("div");
-      div.className = `msg ${msg.type}`;
-      div.innerText = msg.text;
-      els.messages.appendChild(div);
-    });
-    scrollToBottom();
+    history.forEach((msg) => addMessageUI(msg.type, msg.text));
   }
+}
+
+function addMessageUI(type, text) {
+  // Logic split for clarity
+  const div = document.createElement("div");
+  div.className = `msg ${type}`;
+  div.innerText = text;
+  els.messages.appendChild(div);
+  scrollToBottom();
 }
 
 async function saveMessageToStorage(url, type, text) {
   if (type === "error") return;
-
   const key = `chat_${url}`;
   const result = await chrome.storage.local.get(key);
   const history = result[key] || [];
-
   history.push({ type, text, timestamp: Date.now() });
-
   if (history.length > 50) history.shift();
-
   await chrome.storage.local.set({ [key]: history });
 }
 
 async function clearHistory(reloadDefault = true) {
   if (!currentUrl) return;
   const key = `chat_${currentUrl}`;
-
   await chrome.storage.local.remove(key);
   els.messages.innerHTML = "";
-
-  if (reloadDefault) {
-    await loadChatHistory(currentUrl);
-  }
+  if (reloadDefault) await loadChatHistory(currentUrl);
 }
-
-// --- Utilities ---
 
 function getCurrentTab() {
   return new Promise((resolve) => {
@@ -278,53 +225,32 @@ function getCurrentTab() {
 function showView(name) {
   Object.values(views).forEach((el) => el.classList.add("hidden"));
   views[name].classList.remove("hidden");
-
-  if (name === "chat") {
-    els.deleteBtn.classList.remove("hidden");
-  } else {
-    els.deleteBtn.classList.add("hidden");
-  }
+  if (name === "chat") els.deleteBtn.classList.remove("hidden");
+  else els.deleteBtn.classList.add("hidden");
 }
 
 function addMessage(type, text) {
-  const div = document.createElement("div");
-  div.className = `msg ${type}`;
-  div.innerText = text;
-  els.messages.appendChild(div);
-  scrollToBottom();
-
+  addMessageUI(type, text);
   saveMessageToStorage(currentUrl, type, text);
 }
 
 function addLoadingBubble() {
   const div = document.createElement("div");
   div.className = "msg bot loading";
-  div.innerHTML = `
-    <div class="dot"></div>
-    <div class="dot"></div>
-    <div class="dot"></div>
-  `;
+  div.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
   els.messages.appendChild(div);
   scrollToBottom();
   return div;
 }
 
 function scrollToBottom() {
-  els.messages.scrollTo({
-    top: els.messages.scrollHeight,
-    behavior: "smooth",
-  });
+  els.messages.scrollTo({ top: els.messages.scrollHeight, behavior: "smooth" });
 }
 
 function showError(msg) {
-  document.querySelector("main").innerHTML = `
-    <div class="view">
-      <div class="error" style="max-width: 80%">${msg}</div>
-    </div>
-  `;
+  document.querySelector("main").innerHTML =
+    `<div class="view"><div class="error" style="max-width: 80%">${msg}</div></div>`;
 }
-
-// --- Event Listeners ---
 
 els.trainBtn.addEventListener("click", startTraining);
 els.sendBtn.addEventListener("click", sendMessage);
