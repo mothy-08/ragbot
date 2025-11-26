@@ -60,14 +60,7 @@ async function updateContext() {
     // 1. Load History
     await loadChatHistory(currentUrl);
 
-    // 2. IMMEDIATE UI SWITCH:
-    // If we have more than 1 message (meaning real conversation + default hello),
-    // force the view to Chat immediately. Don't wait for the backend.
-    if (els.messages.childElementCount > 1) {
-      showView("chat");
-    }
-
-    // 3. Check Backend (Verification)
+    // 2. Check Status
     await checkIndexStatus(currentUrl);
   } catch (err) {
     console.error(err);
@@ -76,15 +69,20 @@ async function updateContext() {
 }
 
 async function checkIndexStatus(url) {
-  // Check if we are ALREADY looking at a chat history
+  // CRITICAL FIX:
+  // If we already have a conversation history, TRUST IT.
+  // Don't show loading screens or re-check the backend.
+  // This prevents the "Stuck on Loading" bug when switching tabs.
   const hasHistory = els.messages.childElementCount > 1;
-
-  // Only show "Connecting..." if we don't have a history to look at
-  if (!hasHistory) {
-    showView("loading");
-    document.querySelector("#loading-view p").textContent =
-      "Connecting to Brain...";
+  if (hasHistory) {
+    showView("chat");
+    return;
   }
+
+  // Only show "Connecting..." if we are starting fresh
+  showView("loading");
+  document.querySelector("#loading-view p").textContent =
+    "Connecting to Brain...";
 
   try {
     const res = await fetch(`${API_BASE}/check`, {
@@ -98,16 +96,10 @@ async function checkIndexStatus(url) {
     if (data.exists) {
       showView("chat");
     } else {
-      // Only switch to Train view if we really don't have history
-      // (Prevents weird edge cases where index is rebuilding but we have local chat)
-      if (!hasHistory) {
-        showView("train");
-      }
+      showView("train");
     }
   } catch (err) {
-    if (!hasHistory) {
-      showError("Backend Offline. Is the Space running?");
-    }
+    showError("Backend Offline. Is the Space running?");
   }
 }
 
@@ -115,30 +107,70 @@ async function startTraining() {
   els.trainBtn.disabled = true;
   els.trainStatus.classList.remove("hidden");
 
+  // Update text to show we are working
+  const statusText = els.trainStatus.querySelector("span").nextSibling;
+  if (statusText) statusText.textContent = " Reading website...";
+
   try {
+    // 1. Trigger Ingest
     const res = await fetch(`${API_BASE}/ingest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: currentUrl }),
     });
 
-    await res.json();
+    if (!res.ok) throw new Error("Ingest failed");
 
-    // UX: Clear the "Hello" message so we don't have double messages
+    // 2. POLL until ready (The "Wait" Logic)
+    if (statusText) statusText.textContent = " Building brain...";
+
+    const isReady = await pollForIndex(currentUrl);
+
+    if (!isReady) {
+      throw new Error("Training timed out. Try again.");
+    }
+
+    // 3. Success! Wipe old history and start fresh
     await clearHistory(false);
 
-    setTimeout(() => {
-      showView("chat");
-      addMessage(
-        "bot",
-        "I've started reading this site! You can ask me questions now.",
-      );
-    }, 1500);
+    showView("chat");
+    addMessage("bot", "I've finished reading! You can ask me questions now.");
   } catch (err) {
+    alert("Training failed: " + err.message);
+  } finally {
+    // Reset UI state
     els.trainBtn.disabled = false;
     els.trainStatus.classList.add("hidden");
-    alert("Training failed: " + err.message);
+    if (statusText) statusText.textContent = " Processing...";
   }
+}
+
+// Helper: Polls the backend every 2s to see if index is ready
+async function pollForIndex(url) {
+  const maxAttempts = 30; // Wait up to 60 seconds
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    try {
+      const res = await fetch(`${API_BASE}/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url }),
+      });
+      const data = await res.json();
+
+      if (data.exists && data.vector_count > 0) {
+        return true; // Success!
+      }
+    } catch (e) {
+      console.log("Polling error, retrying...");
+    }
+
+    // Wait 2 seconds
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    attempts++;
+  }
+  return false;
 }
 
 async function sendMessage() {

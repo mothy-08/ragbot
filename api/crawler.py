@@ -78,9 +78,11 @@ def crawl_website(base_url: str, limit: int = 25):
                 if result and isinstance(result, dict) and result.get("text"):
                     page_title = result.get("title", "Unknown Page")
                     raw_text = result["text"]
-            except Exception as e:
+            except Exception:
                 # If trafilatura crashes (AttributeError, etc.), fail silently and try fallback
-                # logger.warning(f"Metadata extraction failed for {link}, using fallback.")
+                logger.warning(
+                    f"Metadata extraction failed for {link}, using fallback."
+                )
                 pass
 
             # Attempt 2: Fallback Extraction (If Attempt 1 failed)
