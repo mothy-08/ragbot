@@ -57,10 +57,17 @@ async function updateContext() {
     const urlObj = new URL(currentUrl);
     els.domainBadge.textContent = urlObj.hostname;
 
-    // Load history OR Default message
+    // 1. Load History
     await loadChatHistory(currentUrl);
 
-    // Now check if the backend is ready
+    // 2. IMMEDIATE UI SWITCH:
+    // If we have more than 1 message (meaning real conversation + default hello),
+    // force the view to Chat immediately. Don't wait for the backend.
+    if (els.messages.childElementCount > 1) {
+      showView("chat");
+    }
+
+    // 3. Check Backend (Verification)
     await checkIndexStatus(currentUrl);
   } catch (err) {
     console.error(err);
@@ -69,8 +76,10 @@ async function updateContext() {
 }
 
 async function checkIndexStatus(url) {
+  // Check if we are ALREADY looking at a chat history
   const hasHistory = els.messages.childElementCount > 1;
 
+  // Only show "Connecting..." if we don't have a history to look at
   if (!hasHistory) {
     showView("loading");
     document.querySelector("#loading-view p").textContent =
@@ -89,7 +98,11 @@ async function checkIndexStatus(url) {
     if (data.exists) {
       showView("chat");
     } else {
-      showView("train");
+      // Only switch to Train view if we really don't have history
+      // (Prevents weird edge cases where index is rebuilding but we have local chat)
+      if (!hasHistory) {
+        showView("train");
+      }
     }
   } catch (err) {
     if (!hasHistory) {
@@ -112,7 +125,7 @@ async function startTraining() {
     await res.json();
 
     // UX: Clear the "Hello" message so we don't have double messages
-    await clearHistory(false); // false = do NOT reload default message
+    await clearHistory(false);
 
     setTimeout(() => {
       showView("chat");
@@ -177,16 +190,12 @@ async function loadChatHistory(url) {
 
   if (history.length === 0) {
     const text = "Hello! Ask me anything about this page.";
-    // 1. Show it
     const div = document.createElement("div");
     div.className = "msg bot";
     div.innerText = text;
     els.messages.appendChild(div);
-
-    // 2. Save it
     saveMessageToStorage(url, "bot", text);
   } else {
-    // Render saved history
     history.forEach((msg) => {
       const div = document.createElement("div");
       div.className = `msg ${msg.type}`;
@@ -211,15 +220,11 @@ async function saveMessageToStorage(url, type, text) {
   await chrome.storage.local.set({ [key]: history });
 }
 
-// Added 'reloadDefault' param to control behavior
 async function clearHistory(reloadDefault = true) {
   if (!currentUrl) return;
   const key = `chat_${currentUrl}`;
 
-  // Wipe from storage
   await chrome.storage.local.remove(key);
-
-  // Wipe visual
   els.messages.innerHTML = "";
 
   if (reloadDefault) {
@@ -242,7 +247,6 @@ function showView(name) {
   Object.values(views).forEach((el) => el.classList.add("hidden"));
   views[name].classList.remove("hidden");
 
-  // UX Fix: Only show Delete Button in Chat View
   if (name === "chat") {
     els.deleteBtn.classList.remove("hidden");
   } else {

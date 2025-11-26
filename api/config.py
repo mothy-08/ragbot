@@ -17,7 +17,7 @@ load_dotenv()
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "")
-INDEX_NAME = "production-rag-bot"
+INDEX_NAME = "ragbot"
 
 
 def log_critical(api_key: str):

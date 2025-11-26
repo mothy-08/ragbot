@@ -6,17 +6,17 @@ from api.utils import logger
 
 
 class VectorStoreManager:
-    # Add ': str' to api_key and index_name
     def __init__(self, api_key: str, index_name: str, region: str = "us-east-1"):
         self.pc = Pinecone(api_key=api_key)
         self.index_name = index_name
-        self.embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-        self.dimension = 384
+        self.embed_model = SentenceTransformer(
+            "sentence-transformers/all-mpnet-base-v2"
+        )
+        self.dimension = 768
 
-        # ... rest of the code is fine
+        existing_indexes = [i.name for i in self.pc.list_indexes()]
 
-        # Ensure Index Exists
-        if self.index_name not in [i.name for i in self.pc.list_indexes()]:
+        if self.index_name not in existing_indexes:
             logger.info(f"Creating index {self.index_name}...")
             self.pc.create_index(
                 name=self.index_name,
