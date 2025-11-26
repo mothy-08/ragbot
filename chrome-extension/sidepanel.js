@@ -14,6 +14,7 @@ const els = {
   messages: document.getElementById("messages"),
   input: document.getElementById("user-input"),
   sendBtn: document.getElementById("send-btn"),
+  deleteBtn: document.getElementById("delete-btn"),
 };
 
 // State
@@ -21,17 +22,14 @@ let currentUrl = "";
 
 // --- Initialization ---
 
-// Side Panels stay open, so we need to listen for tab changes
 document.addEventListener("DOMContentLoaded", () => {
-  updateContext(); // Run once on load
+  updateContext();
 });
 
-// Listen for when user switches tabs
 chrome.tabs.onActivated.addListener(() => {
   updateContext();
 });
 
-// Listen for when user navigates within a tab
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete" && tab.active) {
     updateContext();
@@ -44,28 +42,25 @@ async function updateContext() {
   try {
     const tab = await getCurrentTab();
 
-    // 1. Safety Check: If no URL or not a web page, stop here
     if (!tab.url || !tab.url.startsWith("http")) {
       currentUrl = "";
       els.domainBadge.textContent = "Restricted";
-      showView("loading"); // Or a specific "error" view
+      showView("loading");
       document.querySelector("#loading-view p").textContent =
         "Please open a valid website.";
       return;
     }
 
-    // 2. Only reload if URL actually changed
     if (tab.url === currentUrl) return;
 
     currentUrl = tab.url;
-
-    // 3. Update Badge
     const urlObj = new URL(currentUrl);
     els.domainBadge.textContent = urlObj.hostname;
 
-    // 4. Reset UI & Check Backend
-    els.messages.innerHTML =
-      '<div class="msg bot">Hello! Ask me anything about this page.</div>';
+    // Load history OR Default message
+    await loadChatHistory(currentUrl);
+
+    // Now check if the backend is ready
     await checkIndexStatus(currentUrl);
   } catch (err) {
     console.error(err);
@@ -74,9 +69,13 @@ async function updateContext() {
 }
 
 async function checkIndexStatus(url) {
-  showView("loading");
-  document.querySelector("#loading-view p").textContent =
-    "Connecting to Brain...";
+  const hasHistory = els.messages.childElementCount > 1;
+
+  if (!hasHistory) {
+    showView("loading");
+    document.querySelector("#loading-view p").textContent =
+      "Connecting to Brain...";
+  }
 
   try {
     const res = await fetch(`${API_BASE}/check`, {
@@ -93,7 +92,9 @@ async function checkIndexStatus(url) {
       showView("train");
     }
   } catch (err) {
-    showError("Backend Offline. Is server.py running?");
+    if (!hasHistory) {
+      showError("Backend Offline. Is the Space running?");
+    }
   }
 }
 
@@ -110,14 +111,16 @@ async function startTraining() {
 
     await res.json();
 
-    // Fake delay for UX
+    // UX: Clear the "Hello" message so we don't have double messages
+    await clearHistory(false); // false = do NOT reload default message
+
     setTimeout(() => {
       showView("chat");
       addMessage(
         "bot",
         "I've started reading this site! You can ask me questions now.",
       );
-    }, 2000);
+    }, 1500);
   } catch (err) {
     els.trainBtn.disabled = false;
     els.trainStatus.classList.add("hidden");
@@ -130,9 +133,12 @@ async function sendMessage() {
   if (!text) return;
 
   addMessage("user", text);
+
   els.input.value = "";
   els.input.disabled = true;
   els.sendBtn.disabled = true;
+
+  const loadingBubble = addLoadingBubble();
 
   try {
     const res = await fetch(`${API_BASE}/chat`, {
@@ -147,13 +153,77 @@ async function sendMessage() {
     if (!res.ok) throw new Error("API Error");
 
     const data = await res.json();
+
+    loadingBubble.remove();
     addMessage("bot", data.answer);
   } catch (err) {
+    loadingBubble.remove();
     addMessage("error", "Failed to get response. Try again.");
   } finally {
     els.input.disabled = false;
     els.sendBtn.disabled = false;
     els.input.focus();
+  }
+}
+
+// --- Storage & History Logic ---
+
+async function loadChatHistory(url) {
+  els.messages.innerHTML = ""; // Clear current view
+
+  const key = `chat_${url}`;
+  const result = await chrome.storage.local.get(key);
+  const history = result[key] || [];
+
+  if (history.length === 0) {
+    const text = "Hello! Ask me anything about this page.";
+    // 1. Show it
+    const div = document.createElement("div");
+    div.className = "msg bot";
+    div.innerText = text;
+    els.messages.appendChild(div);
+
+    // 2. Save it
+    saveMessageToStorage(url, "bot", text);
+  } else {
+    // Render saved history
+    history.forEach((msg) => {
+      const div = document.createElement("div");
+      div.className = `msg ${msg.type}`;
+      div.innerText = msg.text;
+      els.messages.appendChild(div);
+    });
+    scrollToBottom();
+  }
+}
+
+async function saveMessageToStorage(url, type, text) {
+  if (type === "error") return;
+
+  const key = `chat_${url}`;
+  const result = await chrome.storage.local.get(key);
+  const history = result[key] || [];
+
+  history.push({ type, text, timestamp: Date.now() });
+
+  if (history.length > 50) history.shift();
+
+  await chrome.storage.local.set({ [key]: history });
+}
+
+// Added 'reloadDefault' param to control behavior
+async function clearHistory(reloadDefault = true) {
+  if (!currentUrl) return;
+  const key = `chat_${currentUrl}`;
+
+  // Wipe from storage
+  await chrome.storage.local.remove(key);
+
+  // Wipe visual
+  els.messages.innerHTML = "";
+
+  if (reloadDefault) {
+    await loadChatHistory(currentUrl);
   }
 }
 
@@ -163,7 +233,7 @@ function getCurrentTab() {
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       if (tabs && tabs[0]) resolve(tabs[0]);
-      else resolve({}); // Return empty object instead of crashing
+      else resolve({});
     });
   });
 }
@@ -171,6 +241,13 @@ function getCurrentTab() {
 function showView(name) {
   Object.values(views).forEach((el) => el.classList.add("hidden"));
   views[name].classList.remove("hidden");
+
+  // UX Fix: Only show Delete Button in Chat View
+  if (name === "chat") {
+    els.deleteBtn.classList.remove("hidden");
+  } else {
+    els.deleteBtn.classList.add("hidden");
+  }
 }
 
 function addMessage(type, text) {
@@ -178,19 +255,44 @@ function addMessage(type, text) {
   div.className = `msg ${type}`;
   div.innerText = text;
   els.messages.appendChild(div);
-  els.messages.scrollTop = els.messages.scrollHeight;
+  scrollToBottom();
+
+  saveMessageToStorage(currentUrl, type, text);
+}
+
+function addLoadingBubble() {
+  const div = document.createElement("div");
+  div.className = "msg bot loading";
+  div.innerHTML = `
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  `;
+  els.messages.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function scrollToBottom() {
+  els.messages.scrollTo({
+    top: els.messages.scrollHeight,
+    behavior: "smooth",
+  });
 }
 
 function showError(msg) {
-  // Overwrite main content for critical errors
-  document.querySelector("main").innerHTML =
-    `<div class="error view">${msg}</div>`;
+  document.querySelector("main").innerHTML = `
+    <div class="view">
+      <div class="error" style="max-width: 80%">${msg}</div>
+    </div>
+  `;
 }
 
 // --- Event Listeners ---
 
 els.trainBtn.addEventListener("click", startTraining);
 els.sendBtn.addEventListener("click", sendMessage);
+els.deleteBtn.addEventListener("click", () => clearHistory(true));
 els.input.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendMessage();
 });
