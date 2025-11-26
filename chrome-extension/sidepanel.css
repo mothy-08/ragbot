@@ -348,6 +348,10 @@ input:focus {
   }
 }
 
+#train-status {
+  margin-top: 8px;
+}
+
 .loader {
   border: 2px solid #f3f3f3;
   border-top: 2px solid var(--accent-color);
