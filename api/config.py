@@ -26,7 +26,7 @@ def log_critical(api_key: str):
 
 
 if not GOOGLE_API_KEY:
-    log_critical("PINECONE_API_KEY")
+    log_critical("GOOGLE_API_KEY")
 
 if not PINECONE_API_KEY:
     log_critical("PINECONE_API_KEY")
