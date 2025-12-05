@@ -1,9 +1,9 @@
 import os
 import sys
 import logging
-from dotenv import load_dotenv
 from api.vectorstore import VectorStoreManager
-import google.generativeai as genai
+from dotenv import load_dotenv
+from google import genai
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,12 +32,22 @@ if not PINECONE_API_KEY:
     log_critical("PINECONE_API_KEY")
 
 
+def system_instruction(url: str, context: str):
+    return f"""
+    INSTRUCTION:
+    You are a helpful assistant for the website: {url}.  
+    Answer only using the provided context below.  
+    If the information is missing, reply: "Sorry, I haven't read that information yet."  
+    Limit every answer to five sentences.
+
+    CONTEXT:
+    {context}
+    """
+
+
 try:
     vs = VectorStoreManager(api_key=PINECONE_API_KEY, index_name=INDEX_NAME)
-
-    genai.configure(api_key=GOOGLE_API_KEY)  # type: ignore
-    flash = genai.GenerativeModel("gemini-2.0-flash")  # type: ignore
-
+    flash = genai.Client()
     logger.info("✅ System initialized: Pinecone & Gemini ready.")
 except Exception as e:
     logger.critical(f"Startup Failure: {e}")

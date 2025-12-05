@@ -68,3 +68,16 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Query failed: {e}")
             return None
+
+    def delete_namespace(self, namespace):
+        """
+        Nukes the entire namespace.
+        Used before re-ingesting to prevent duplicates.
+        """
+        try:
+            self.index.delete(delete_all=True, namespace=namespace)
+            logger.info(f"NUKED namespace: {namespace}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete namespace {namespace}: {e}")
+            return False

@@ -3,6 +3,7 @@ import re
 import requests
 import trafilatura
 from trafilatura.sitemaps import sitemap_search
+from trafilatura.spider import focused_crawler
 from api.utils import logger, is_valid_url
 
 # 1. PRIORITY KEYWORDS
@@ -25,6 +26,9 @@ PRIORITY_KEYWORDS = [
     "careers",
     "office-of-the-president",
     "executive",
+    "volunteer-service",
+    "give-blood",
+    "ways-to-donate",
 ]
 
 
@@ -78,11 +82,18 @@ def crawl_website(base_url: str, limit: int = 25):
         urls = []
 
     if not urls:
-        urls = [base_url]
+        logger.warning(f"No sitemap found for {base_url}. Engaging Spider...")
+        try:
+            _, known_links = focused_crawler(base_url, max_seen_urls=1)
+            urls = list(known_links)
+
+            urls.append(base_url)
+        except Exception as e:
+            logger.error(f"Spider failed: {e}")
+            urls = [base_url]
 
     valid_urls = [u for u in urls if is_valid_url(u, base_url)]
 
-    # SORT BY IMPORTANCE
     valid_urls.sort(key=get_url_priority, reverse=True)
 
     logger.info(f"Found {len(urls)} URLs. Top priority: {valid_urls[:3]}")

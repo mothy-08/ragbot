@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="sidepanel.css" />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=delete,send"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=delete,refresh,send"
     />
     <script src="sidepanel.js" defer></script>
   </head>
@@ -16,6 +16,15 @@
       <h1>Ragbot</h1>
       <div class="header-controls">
         <span id="domain-badge" class="badge">Checking...</span>
+
+        <button
+          id="retrain-btn"
+          class="icon-btn material-symbols-outlined hidden"
+          data-tooltip="Retrain / Refresh"
+        >
+          refresh
+        </button>
+
         <button
           id="delete-btn"
           class="icon-btn material-symbols-outlined hidden"

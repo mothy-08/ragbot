@@ -1,10 +1,13 @@
+import time
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.utils import get_namespace_id, logger
 from api.crawler import crawl_website
 from api.schemas import ChatRequest, IngestRequest
-from api.config import vs, flash
+from api.config import vs, flash, system_instruction
+from google.genai import types
 
 app = FastAPI(title="RAG Chatbot API", version="1.0")
 
@@ -19,9 +22,9 @@ app.add_middleware(
 
 def background_ingest_task(url: str, namespace_id: str):
     logger.info(f"Background crawl STARTED for: {url}")
+    start = time.perf_counter()
     try:
-        # Limit set to 25 to balance speed/completeness
-        crawler_gen = crawl_website(url, limit=25)
+        crawler_gen = crawl_website(url, limit=50)
 
         buffer = []
         for source_url, chunks in crawler_gen:
@@ -39,10 +42,13 @@ def background_ingest_task(url: str, namespace_id: str):
     except Exception as e:
         logger.error(f"Background task failed for {url}: {e}")
 
+    end = time.perf_counter()
+    logger.info(f"Time elapsed: {end - start}")
+
 
 @app.get("/")
 def check_health():
-    return {"status": "online", "system": "RAG-Chatbot v2.0"}
+    return {"status": "online", "system": "RAG-Chatbot v1.0"}
 
 
 @app.post("/check")
@@ -83,6 +89,20 @@ def ingest_endpoint(req: IngestRequest, background_tasks: BackgroundTasks):
     }
 
 
+# Add this near your other endpoints
+@app.post("/reset")
+def reset_endpoint(req: IngestRequest):
+    url_str = str(req.url)
+    namespace_id = get_namespace_id(url_str)
+
+    success = vs.delete_namespace(namespace_id)
+
+    if success:
+        return {"status": "success", "message": f"Memory wiped for {url_str}"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete namespace")
+
+
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
     url_str = str(req.url)
@@ -94,8 +114,12 @@ def chat_endpoint(req: ChatRequest):
     contexts = []
     sources = set()
 
+    logger.info(f"\n--- DEBUG: RETRIEVED FOR '{req.message}' ---")
     if results and results.matches:
-        for match in results.matches:
+        for i, match in enumerate(results.matches):
+            logger.info(
+                f"[{i}] Score: {match.score:.4f} | Text: {match.metadata.get('text', '')[:100]}..."
+            )
             if match.metadata:
                 text = match.metadata.get("text", "")
                 src = match.metadata.get("source", None)
@@ -111,21 +135,16 @@ def chat_endpoint(req: ChatRequest):
         }
 
     # 2. Prompting
-    context_blob = "\n\n".join(contexts[:5])
-    prompt = f"""
-    You are a helpful assistant for the website: {url_str}.
-    Use ONLY the context provided below to answer the user's question.
-    If the answer is not in the context, say "I don't have that information."
-
-    CONTEXT:
-    {context_blob}
-
-    USER QUESTION:
-    {req.message}
-    """
+    context = "\n\n".join(contexts[:5])
 
     try:
-        response = flash.generate_content(prompt)
+        response = flash.models.generate_content(
+            model="gemini-2.0-flash",
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction(url_str, context)
+            ),
+            contents=req.message,
+        )
         return {"answer": response.text, "sources": list(sources)}
     except Exception as e:
         logger.error(f"LLM Error: {e}")
