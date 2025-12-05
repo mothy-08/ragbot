@@ -1,6 +1,6 @@
 // Config
-// const API_BASE = "https://mothy-08-ragbot.hf.space";
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://mothy-08-ragbot.hf.space";
+// const API_BASE = "http://127.0.0.1:8000";
 
 // DOM Elements
 const views = {
